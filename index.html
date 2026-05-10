@@ -1,4 +1,4 @@
-<body style="margin:0; overflow:hidden; background:#d9c7a2;"></body>
+<body style="background: #d8c3a5"></body>
 
 <script src="https://cdn.jsdelivr.net/gh/netizenorg/netnet-standard-library/build/nn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
@@ -6,53 +6,14 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 
 <script>
-/* global nn, handPoseDetection */
+  /* global nn, handPoseDetection */
 
-let model, video, bgCanvas, drawCanvas, uiCanvas
-let smoothX = null
-let smoothY = null
-let prevX = null
-let prevY = null
-let lastPinch = false
-
-function setupBackground () {
-  const w = bgCanvas.width
-  const h = bgCanvas.height
-
-  bgCanvas.clear()
-
-  // sand base
-  nn.get('body').css('background', '#d9c7a2')
-
-  // subtle sand texture
-  bgCanvas.strokeStyle = 'rgba(255,255,255,0.06)'
-  bgCanvas.lineWidth = 1
-
-  for (let y = 0; y < h; y += 10) {
-    bgCanvas.beginPath()
-    for (let x = 0; x < w; x += 20) {
-      const wave = Math.sin(x * 0.015 + y * 0.03) * 2
-      if (x === 0) bgCanvas.moveTo(x, y + wave)
-      else bgCanvas.lineTo(x, y + wave)
-    }
-    bgCanvas.stroke()
-  }
-
-  // stones
-  bgCanvas.fillStyle = 'rgba(95,95,95,0.65)'
-  bgCanvas.circle(w * 0.2, h * 0.72, 36)
-  bgCanvas.circle(w * 0.72, h * 0.3, 28)
-  bgCanvas.circle(w * 0.78, h * 0.75, 48)
-
-  // moss islands
-  bgCanvas.fillStyle = 'rgba(94,125,70,0.5)'
-  bgCanvas.circle(w * 0.28, h * 0.22, 70)
-  bgCanvas.circle(w * 0.6, h * 0.15, 55)
-}
-
-function clearSand () {
-  drawCanvas.clear()
-}
+  let model, video, canvas
+  let grooves = []
+  let smoothX = null
+  let smoothY = null
+  let lastPinch = false
+  let sandGrains = []
 
 function drawRakeStroke (x1, y1, x2, y2) {
   const dx = x2 - x1
@@ -61,11 +22,11 @@ function drawRakeStroke (x1, y1, x2, y2) {
 
   if (len < 2) return
 
-  // perpendicular vector
+  // perpendicular direction for rake teeth
   const nx = -dy / len
   const ny = dx / len
 
-  const teeth = 6
+  const teeth = 5
   const spacing = 8
 
   for (let i = 0; i < teeth; i++) {
@@ -74,139 +35,182 @@ function drawRakeStroke (x1, y1, x2, y2) {
     const ox = nx * offset
     const oy = ny * offset
 
-    // highlight edge
-    drawCanvas.strokeStyle = 'rgba(255,255,255,0.12)'
-    drawCanvas.lineWidth = 3
-    drawCanvas.beginPath()
-    drawCanvas.moveTo(x1 + ox, y1 + oy - 1)
-    drawCanvas.lineTo(x2 + ox, y2 + oy - 1)
-    drawCanvas.stroke()
+    // highlight
+    canvas.strokeStyle = 'rgba(255,255,255,0.16)'
+    canvas.lineWidth = 3
+    canvas.line(x1 + ox, y1 + oy - 1, x2 + ox, y2 + oy - 1)
 
-    // groove center
-    drawCanvas.strokeStyle = 'rgba(110,85,55,0.35)'
-    drawCanvas.lineWidth = 2
-    drawCanvas.beginPath()
-    drawCanvas.moveTo(x1 + ox, y1 + oy)
-    drawCanvas.lineTo(x2 + ox, y2 + oy)
-    drawCanvas.stroke()
+    // main groove
+    canvas.strokeStyle = 'rgba(110,85,55,0.35)'
+    canvas.lineWidth = 2
+    canvas.line(x1 + ox, y1 + oy, x2 + ox, y2 + oy)
+
+    // shadow
+    canvas.strokeStyle = 'rgba(70,50,35,0.18)'
+    canvas.lineWidth = 1
+    canvas.line(x1 + ox, y1 + oy + 1, x2 + ox, y2 + oy + 1)
   }
 }
 
-async function update () {
-  requestAnimationFrame(update)
-
-  const w = window.innerWidth
-  const h = window.innerHeight
-
-  if (bgCanvas.width !== w || bgCanvas.height !== h) {
-    bgCanvas.resize(w, h)
-    drawCanvas.resize(w, h)
-    uiCanvas.resize(w, h)
-    setupBackground()
-  }
-
-  uiCanvas.clear()
-
-  const opts = { flipHorizontal: true }
-  const hands = await model.estimateHands(video, opts)
-  const hand = hands[0]
-
-  if (hand) {
-    const idx = hand.keypoints[8]
-    const thb = hand.keypoints[4]
-
-    const x = idx.x
-    const y = idx.y
-
-    if (smoothX === null) {
-      smoothX = x
-      smoothY = y
-      prevX = x
-      prevY = y
-    } else {
-      smoothX = smoothX * 0.7 + x * 0.3
-      smoothY = smoothY * 0.7 + y * 0.3
-    }
-
-    drawRakeStroke(prevX, prevY, smoothX, smoothY)
-
-    prevX = smoothX
-    prevY = smoothY
-
-    // show fingertip
-    uiCanvas.fillStyle = 'rgba(255,255,255,0.8)'
-    uiCanvas.circle(smoothX, smoothY, 7)
-
-    // thumb marker
-    uiCanvas.fillStyle = 'rgba(255,255,255,0.35)'
-    uiCanvas.circle(thb.x, thb.y, 5)
-
-    // pinch to clear
-    const d = nn.dist(idx.x, idx.y, thb.x, thb.y)
-    const pinching = d < 35
-
-    if (pinching && !lastPinch) {
-      clearSand()
-    }
-    lastPinch = pinching
+function drawGrooves () {
+  for (let i = 1; i < grooves.length; i++) {
+    const a = grooves[i - 1]
+    const b = grooves[i]
+    if (a === null || b === null) continue
+    drawRakeStroke(a.x, a.y, b.x, b.y)
   }
 }
 
-async function setup () {
-  video = nn.create('video')
+  function drawSandBackground () {
+    nn.get('body').css('background', '#d8c3a5')
+    if (sandGrains.length === 0) {
+      for (let i = 0; i < 900; i++) {
+      sandGrains.push({
+      x:nn.random(canvas.width),
+      y: nn.random(canvas.height),
+      r: nn.random(0.5, 1.6)
+        })
+      }
+      for (const grain of sandGrains) {
+        canvas.fillStyle = 'rgba(80, 55, 30, 0.22)'
+        canvas.circle(grain.x, grain.y, grain.r)
+    }
+    
+    // moss islands
+    canvas.fillStyle = 'rgba(94, 125, 70, 0.5)'
+    canvas.circle(canvas.width * 0.28, canvas.height * 0.22, 70)
+    canvas.circle(canvas.width * 0.6, canvas.height * 0.15, 55)
+
+    // stones
+    canvas.fillStyle = 'rgba(95, 95, 95, 0.65)'
+    canvas.circle(canvas.width * 0.18, canvas.height * 0.72, 45)
+    canvas.circle(canvas.width * 0.78, canvas.height * 0.28, 60)
+    canvas.circle(canvas.width * 0.68, canvas.height * 0.76, 35)
+  }
+  
+  function isOnObstacle (x, y) {
+  const obstacles = [
+    { x: canvas.width * 0.28, y: canvas.height * 0.22, r: 70 },
+    { x: canvas.width * 0.6, y: canvas.height * 0.15, r: 55 },
+    { x: canvas.width * 0.18, y: canvas.height * 0.72, r: 45 },
+    { x: canvas.width * 0.78, y: canvas.height * 0.28, r: 60 },
+    { x: canvas.width * 0.68, y: canvas.height * 0.76, r: 35 }
+  ]
+
+  return obstacles.some(o => nn.dist(x, y, o.x, o.y) < o.r + 12)
+}
+  
+  async function update () {
+    requestAnimationFrame(update)
+
+    if (canvas.height !== video.height) {
+      canvas.resize(video.width, video.height)
+    }
+
+    canvas.clear()
+    drawSandBackground()
+
+    // redraw saved grooves every frame
+    drawGrooves()
+
+    const opts = {
+      flipHorizontal: true
+    }
+    const hands = await model.estimateHands(video, opts)
+
+    if (hands.length > 0) {
+      const hand = hands[0]
+  const idx = hand.keypoints[8]
+  const thb = hand.keypoints[4]
+
+  const videoW = video.videoWidth || video.width
+  const videoH = video.videoHeight || video.height
+
+  const scaleX = canvas.width / videoW
+  const scaleY = canvas.height / videoH
+
+  const fingerX = idx.x * scaleX
+  const fingerY = idx.y * scaleY
+
+  const thumbX = thb.x * scaleX
+  const thumbY = thb.y * scaleY
+
+  if (smoothX === null) {
+    smoothX = fingerX
+    smoothY = fingerY
+  } else {
+    smoothX = smoothX * 0.75 + fingerX * 0.25
+    smoothY = smoothY * 0.75 + fingerY * 0.25
+  }
+
+  if (isOnObstacle(smoothX, smoothY)) {
+  grooves.push(null)
+} else {
+  grooves.push({ x: smoothX, y: smoothY })
+}
+
+  if (grooves.length > 500) {
+    grooves.shift()
+  }
+
+  canvas.fillStyle = 'rgba(255,255,255,0.7)'
+  canvas.circle(smoothX, smoothY, 8)
+
+  canvas.fillStyle = 'rgba(255,255,255,0.35)'
+  canvas.circle(thumbX, thumbY, 6)
+
+  const d = nn.dist(fingerX, fingerY, thumbX, thumbY)
+  const pinching = d < 35
+
+  if (pinching && !lastPinch) {
+    grooves = []
+  }
+
+  lastPinch = pinching
+    }}
+
+  async function setup () {
+    video = nn.create('video')
+      .addTo('body')
+      .position(0, 0)
+      .css({
+        width: '100vw',
+        height: '100vh',
+        objectFit: 'cover',
+        opacity: 0.15
+      })
+      .scale(-1, 1)
+      .set({
+        autoplay: true,
+        muted: true,
+        stream: await nn.askFor({
+          video: true
+        })
+      })
+
+    canvas = nn.create('canvas')
+      .position(20, 20)
+      .addTo('body')
+
+    canvas.lineWidth = 4
+    canvas.fillStyle = 'transparent'
+    canvas.strokeStyle = 'white'
+
+    const type = handPoseDetection.SupportedModels.MediaPipeHands
+    const config = {
+      runtime: 'mediapipe',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+      modelType: 'full',
+      maxHands: 1
+    }
+
+    model = await handPoseDetection.createDetector(type, config)
+   this.remove()
+    update()
+  }
+
+  nn.create('button')
+    .content('Enter Zen Garden')
     .addTo('body')
-    .position(20, 20)
-    .css({
-      opacity: 0.08,
-      borderRadius: '14px',
-      filter: 'grayscale(1)'
-    })
-    .scale(-1, 1)
-    .set({
-      autoplay: true,
-      muted: true,
-      stream: await nn.askFor({ video: true })
-    })
-
-  bgCanvas = nn.create('canvas').addTo('body').position(0, 0)
-  drawCanvas = nn.create('canvas').addTo('body').position(0, 0)
-  uiCanvas = nn.create('canvas').addTo('body').position(0, 0)
-
-  const w = window.innerWidth
-  const h = window.innerHeight
-  bgCanvas.resize(w, h)
-  drawCanvas.resize(w, h)
-  uiCanvas.resize(w, h)
-
-  setupBackground()
-
-  const type = handPoseDetection.SupportedModels.MediaPipeHands
-  const config = {
-    runtime: 'mediapipe',
-    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-    modelType: 'full',
-    maxHands: 1
-  }
-
-  model = await handPoseDetection.createDetector(type, config)
-
-  this.remove()
-  update()
-}
-
-nn.create('button')
-  .content('enter zen garden')
-  .addTo('body')
-  .position(30, 30)
-  .css({
-    padding: '14px 22px',
-    borderRadius: '999px',
-    border: '1px solid rgba(255,255,255,0.35)',
-    background: 'rgba(255,255,255,0.15)',
-    color: '#fff',
-    fontSize: '16px',
-    cursor: 'pointer',
-    backdropFilter: 'blur(6px)'
-  })
-  .on('click', setup)
+    .on('click', setup)
 </script>
