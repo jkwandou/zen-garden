@@ -1,5 +1,4 @@
 <body style="background: #d8c3a5"></body>
-
 <script src="https://cdn.jsdelivr.net/gh/netizenorg/netnet-standard-library/build/nn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
@@ -63,18 +62,11 @@ function drawGrooves () {
 
   function drawSandBackground () {
     nn.get('body').css('background', '#d8c3a5')
-    if (sandGrains.length === 0) {
-      for (let i = 0; i < 900; i++) {
-      sandGrains.push({
-      x:nn.random(canvas.width),
-      y: nn.random(canvas.height),
-      r: nn.random(0.5, 1.6)
-        })
-      }
-      for (const grain of sandGrains) {
-        canvas.fillStyle = 'rgba(80, 55, 30, 0.22)'
-        canvas.circle(grain.x, grain.y, grain.r)
-    }
+    for (const grain of sandGrains) {
+      canvas.fillStyle = 'rgba(80, 55, 30, 0.22)'
+      canvas.circle(grain.x, grain.y, grain.r)
+}
+    }  
     
     // moss islands
     canvas.fillStyle = 'rgba(94, 125, 70, 0.5)'
@@ -86,7 +78,6 @@ function drawGrooves () {
     canvas.circle(canvas.width * 0.18, canvas.height * 0.72, 45)
     canvas.circle(canvas.width * 0.78, canvas.height * 0.28, 60)
     canvas.circle(canvas.width * 0.68, canvas.height * 0.76, 35)
-  }
   
   function isOnObstacle (x, y) {
   const obstacles = [
