@@ -8,12 +8,20 @@
 <script>
   /* global nn, handPoseDetection */
 
-  let model, video, canvas
+  let model, video, canvas, audio
   let grooves = []
   let smoothX = null
   let smoothY = null
   let lastPinch = false
   let sandGrains = []
+
+function setupAudio () {
+  audio = nn.create('audio')
+  audio.set('src', 'meditativetiger-deeper-zen-flow-511825.mp3')
+  audio.set('loop', true)
+  audio.addTo('body')
+  audio.play()
+}
 
 function drawRakeStroke (x1, y1, x2, y2) {
   const dx = x2 - x1
@@ -208,7 +216,8 @@ function drawGrooves () {
     }
 
     model = await handPoseDetection.createDetector(type, config)
-   this.remove()
+    setupAudio()
+    this.remove()
     update()
   }
 
